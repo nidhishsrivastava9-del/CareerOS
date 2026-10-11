@@ -10,7 +10,10 @@ import {
   initialGoalsData, 
   dsaTopicsData, 
   dsaSummary, 
-  studentProfile 
+  studentProfile,
+  roadmapMilestones as defaultMilestones,
+  weeklyActivityData as defaultWeeklyActivity,
+  resumeData as defaultResumeData
 } from '../data/dummyData.js';
 
 export const STORAGE_KEYS = {
@@ -18,7 +21,11 @@ export const STORAGE_KEYS = {
   PROJECTS: 'careeros_projects',
   GOALS: 'careeros_goals',
   DSA: 'careeros_dsa',
-  USER: 'careeros_user'
+  USER: 'careeros_user',
+  CERTIFICATIONS: 'careeros_certifications',
+  RESUME: 'careeros_resume',
+  ROADMAP: 'careeros_roadmap',
+  ACTIVITY: 'careeros_activity'
 };
 
 const STORAGE_EVENT_NAME = 'careeros_storage_updated';
@@ -59,7 +66,6 @@ export function setData(key, data) {
         new CustomEvent(STORAGE_EVENT_NAME, { detail: { key, data } })
       );
     } catch {
-      // CustomEvent fallback if in older environments
       const event = document.createEvent('Event');
       event.initEvent(STORAGE_EVENT_NAME, true, true);
       window.dispatchEvent(event);
@@ -68,6 +74,28 @@ export function setData(key, data) {
   } catch (err) {
     console.error(`[CareerOS Storage] Failed to persist key "${key}":`, err);
     return false;
+  }
+}
+
+/**
+ * Update an existing LocalStorage entry using either an updater function or a partial object
+ */
+export function updateData(key, updaterOrPartial) {
+  try {
+    const current = getData(key, null);
+    let updated;
+    if (typeof updaterOrPartial === 'function') {
+      updated = updaterOrPartial(current);
+    } else if (current && typeof current === 'object' && !Array.isArray(current)) {
+      updated = { ...current, ...updaterOrPartial };
+    } else {
+      updated = updaterOrPartial;
+    }
+    setData(key, updated);
+    return updated;
+  } catch (err) {
+    console.error(`[CareerOS Storage] Failed to update key "${key}":`, err);
+    return null;
   }
 }
 
@@ -120,7 +148,7 @@ export function subscribeToStorage(callback) {
    INITIAL DATA SEEDING HELPERS
    ========================================================================= */
 
-function getInitialSkills() {
+export function getInitialSkills() {
   return skillProgressData.map((s, idx) => ({
     id: `skill-${idx + 1}-${Date.now().toString(36)}`,
     name: s.name,
@@ -131,7 +159,7 @@ function getInitialSkills() {
   }));
 }
 
-function getInitialProjects() {
+export function getInitialProjects() {
   return recentProjectsData.map((p, idx) => ({
     id: p.id || `proj-${idx + 1}`,
     title: p.title || 'Untitled Project',
@@ -145,12 +173,13 @@ function getInitialProjects() {
   }));
 }
 
-function getInitialGoals() {
+export function getInitialGoals() {
   return [
     {
       id: 'goal-1',
       title: 'Solve 5 DSA questions',
       task: 'Solve 5 DSA questions',
+      description: 'Practice 5 LeetCode medium questions covering sliding window and two pointers.',
       category: 'Daily',
       deadline: 'Today, 8:00 PM',
       priority: 'High',
@@ -162,6 +191,7 @@ function getInitialGoals() {
       id: 'goal-2',
       title: 'Complete React hooks lesson',
       task: 'Complete React hooks lesson',
+      description: 'Master useEffect cleanup, useMemo optimization, and custom hook design.',
       category: 'Daily',
       deadline: 'Today, 10:00 PM',
       priority: 'Medium',
@@ -173,6 +203,7 @@ function getInitialGoals() {
       id: 'goal-3',
       title: 'Work on portfolio project',
       task: 'Work on portfolio project',
+      description: 'Integrate dynamic responsive components and LocalStorage persistence.',
       category: 'Short-Term',
       deadline: 'Tomorrow, 6:00 PM',
       priority: 'High',
@@ -184,6 +215,7 @@ function getInitialGoals() {
       id: 'goal-4',
       title: 'Read DBMS notes & indexing concepts',
       task: 'Read DBMS notes & indexing concepts',
+      description: 'Review B-Trees, Hash Indexes, ACID transactions, and query plans.',
       category: 'Short-Term',
       deadline: 'Friday, 5:00 PM',
       priority: 'Medium',
@@ -195,6 +227,7 @@ function getInitialGoals() {
       id: 'goal-5',
       title: 'Complete Meta Frontend Certificate Capstone',
       task: 'Complete Meta Frontend Certificate Capstone',
+      description: 'Finalize accessible UI forms, automated tests, and submit review.',
       category: 'Long-Term',
       deadline: 'Oct 15, 2026',
       priority: 'High',
@@ -206,6 +239,7 @@ function getInitialGoals() {
       id: 'goal-6',
       title: 'Solve 150 LeetCode Mediums',
       task: 'Solve 150 LeetCode Mediums',
+      description: 'Targeted preparation for engineering summer internship technical rounds.',
       category: 'Long-Term',
       deadline: 'Nov 30, 2026',
       priority: 'Medium',
@@ -216,9 +250,7 @@ function getInitialGoals() {
   ];
 }
 
-function getInitialDSA() {
-  // Ensure all 10 required categories are explicitly present:
-  // Arrays, Strings, Linked List, Stack, Queue, Trees, Graphs, Sorting, Searching, Dynamic Programming
+export function getInitialDSA() {
   const defaultTopics = [
     { topic: 'Arrays', solved: 18, total: 25, easy: 10, medium: 7, hard: 1, color: 'from-blue-500 to-indigo-600' },
     { topic: 'Strings', solved: 15, total: 20, easy: 8, medium: 6, hard: 1, color: 'from-indigo-500 to-purple-600' },
@@ -232,8 +264,8 @@ function getInitialDSA() {
     { topic: 'Dynamic Programming', solved: 7, total: 25, easy: 2, medium: 4, hard: 1, color: 'from-cyan-500 to-blue-600' }
   ];
 
-  const totalSolved = defaultTopics.reduce((acc, t) => acc + t.solved, 0);
-  const targetGoal = defaultTopics.reduce((acc, t) => acc + t.total, 0);
+  const totalSolved = defaultTopics.reduce((acc, t) => acc + (Number(t.solved) || 0), 0);
+  const targetGoal = defaultTopics.reduce((acc, t) => acc + (Number(t.total) || 0), 0);
 
   return {
     topics: defaultTopics,
@@ -249,18 +281,46 @@ function getInitialDSA() {
   };
 }
 
+export function getInitialCertifications() {
+  return [
+    { id: 'cert-1', name: 'Meta Frontend Developer Professional Certificate', issuer: 'Coursera', date: '2025', url: 'https://coursera.org' },
+    { id: 'cert-2', name: 'JavaScript Algorithms & Data Structures', issuer: 'freeCodeCamp', date: '2024', url: 'https://freecodecamp.org' }
+  ];
+}
+
+export function getInitialResume() {
+  return {
+    ...defaultResumeData,
+    certifications: getInitialCertifications()
+  };
+}
+
+export function getInitialRoadmap() {
+  return defaultMilestones;
+}
+
+export function getInitialActivity() {
+  return [
+    { day: 'Mon', hours: 4.5, problemsSolved: 4, commits: 7 },
+    { day: 'Tue', hours: 6.0, problemsSolved: 6, commits: 12 },
+    { day: 'Wed', hours: 3.5, problemsSolved: 3, commits: 5 },
+    { day: 'Thu', hours: 5.5, problemsSolved: 5, commits: 9 },
+    { day: 'Fri', hours: 4.0, problemsSolved: 4, commits: 8 },
+    { day: 'Sat', hours: 7.0, problemsSolved: 8, commits: 15 },
+    { day: 'Sun', hours: 5.0, problemsSolved: 5, commits: 6 }
+  ];
+}
+
 /* =========================================================================
    DOMAIN SPECIFIC GETTERS AND SETTERS
    ========================================================================= */
 
 export function getSkills() {
   const existing = getData(STORAGE_KEYS.SKILLS, null);
-  if (Array.isArray(existing) && existing.length >= 0) {
+  if (Array.isArray(existing)) {
     return existing;
   }
-  const initial = getInitialSkills();
-  setData(STORAGE_KEYS.SKILLS, initial);
-  return initial;
+  return [];
 }
 
 export function saveSkills(skills) {
@@ -271,12 +331,10 @@ export function saveSkills(skills) {
 
 export function getProjects() {
   const existing = getData(STORAGE_KEYS.PROJECTS, null);
-  if (Array.isArray(existing) && existing.length >= 0) {
+  if (Array.isArray(existing)) {
     return existing;
   }
-  const initial = getInitialProjects();
-  setData(STORAGE_KEYS.PROJECTS, initial);
-  return initial;
+  return [];
 }
 
 export function saveProjects(projects) {
@@ -287,12 +345,10 @@ export function saveProjects(projects) {
 
 export function getGoals() {
   const existing = getData(STORAGE_KEYS.GOALS, null);
-  if (Array.isArray(existing) && existing.length >= 0) {
+  if (Array.isArray(existing)) {
     return existing;
   }
-  const initial = getInitialGoals();
-  setData(STORAGE_KEYS.GOALS, initial);
-  return initial;
+  return [];
 }
 
 export function saveGoals(goals) {
@@ -306,20 +362,41 @@ export function getDSA() {
   if (existing && Array.isArray(existing.topics)) {
     return existing;
   }
-  const initial = getInitialDSA();
-  setData(STORAGE_KEYS.DSA, initial);
-  return initial;
+  return {
+    topics: [],
+    summary: {
+      totalSolved: 0,
+      targetGoal: 0,
+      easy: 0,
+      medium: 0,
+      hard: 0
+    }
+  };
 }
 
 export function saveDSA(dsaData) {
-  const safeDSA = dsaData && Array.isArray(dsaData.topics) ? dsaData : getInitialDSA();
+  let safeDSA;
+  if (dsaData && Array.isArray(dsaData.topics)) {
+    const totalSolved = dsaData.topics.reduce((acc, t) => acc + (Number(t.solved) || 0), 0);
+    const targetGoal = dsaData.topics.reduce((acc, t) => acc + (Number(t.total) || 0), 0);
+    safeDSA = {
+      ...dsaData,
+      summary: {
+        ...(dsaData.summary || {}),
+        totalSolved,
+        targetGoal
+      }
+    };
+  } else {
+    safeDSA = getInitialDSA();
+  }
   setData(STORAGE_KEYS.DSA, safeDSA);
   return safeDSA;
 }
 
 export function getUser() {
   const existing = getData(STORAGE_KEYS.USER, null);
-  if (existing && typeof existing === 'object') {
+  if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
     return existing;
   }
   setData(STORAGE_KEYS.USER, studentProfile);
@@ -327,9 +404,73 @@ export function getUser() {
 }
 
 export function saveUser(user) {
-  const safeUser = user && typeof user === 'object' ? user : studentProfile;
+  const safeUser = user && typeof user === 'object' && !Array.isArray(user) ? user : studentProfile;
   setData(STORAGE_KEYS.USER, safeUser);
   return safeUser;
+}
+
+export function getCertifications() {
+  const existing = getData(STORAGE_KEYS.CERTIFICATIONS, null);
+  if (Array.isArray(existing)) {
+    return existing;
+  }
+  const initial = getInitialCertifications();
+  setData(STORAGE_KEYS.CERTIFICATIONS, initial);
+  return initial;
+}
+
+export function saveCertifications(certs) {
+  const safeCerts = Array.isArray(certs) ? certs : [];
+  setData(STORAGE_KEYS.CERTIFICATIONS, safeCerts);
+  return safeCerts;
+}
+
+export function getResume() {
+  const existing = getData(STORAGE_KEYS.RESUME, null);
+  if (existing && typeof existing === 'object') {
+    return existing;
+  }
+  const initial = getInitialResume();
+  setData(STORAGE_KEYS.RESUME, initial);
+  return initial;
+}
+
+export function saveResume(resume) {
+  const safeResume = resume && typeof resume === 'object' ? resume : getInitialResume();
+  setData(STORAGE_KEYS.RESUME, safeResume);
+  return safeResume;
+}
+
+export function getRoadmap() {
+  const existing = getData(STORAGE_KEYS.ROADMAP, null);
+  if (Array.isArray(existing)) {
+    return existing;
+  }
+  const initial = getInitialRoadmap();
+  setData(STORAGE_KEYS.ROADMAP, initial);
+  return initial;
+}
+
+export function saveRoadmap(roadmap) {
+  const safeRoadmap = Array.isArray(roadmap) ? roadmap : [];
+  setData(STORAGE_KEYS.ROADMAP, safeRoadmap);
+  return safeRoadmap;
+}
+
+export function getActivity() {
+  const existing = getData(STORAGE_KEYS.ACTIVITY, null);
+  if (Array.isArray(existing)) {
+    return existing;
+  }
+  const initial = getInitialActivity();
+  setData(STORAGE_KEYS.ACTIVITY, initial);
+  return initial;
+}
+
+export function saveActivity(activity) {
+  const safeActivity = Array.isArray(activity) ? activity : [];
+  setData(STORAGE_KEYS.ACTIVITY, safeActivity);
+  return safeActivity;
 }
 
 /**
@@ -341,4 +482,8 @@ export function resetToDefaults() {
   saveGoals(getInitialGoals());
   saveDSA(getInitialDSA());
   saveUser(studentProfile);
+  saveCertifications(getInitialCertifications());
+  saveResume(getInitialResume());
+  saveRoadmap(getInitialRoadmap());
+  saveActivity(getInitialActivity());
 }

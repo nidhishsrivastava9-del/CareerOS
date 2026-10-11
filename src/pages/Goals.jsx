@@ -1,41 +1,60 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Target, Plus, CheckCircle2, Circle, Clock, Sparkles, Pencil, Trash2, ChevronDown } from 'lucide-react';
-import { getGoals, saveGoals, subscribeToStorage, STORAGE_KEYS } from '../utils/storage';
+import { Target, Plus, CheckCircle2, Circle, Clock, Sparkles, Pencil, Trash2, ChevronDown, Loader2, AlertCircle, RefreshCw, Database } from 'lucide-react';
+import api from '../utils/api';
+import { saveGoals } from '../utils/storage';
+import { useToast } from '../context/ToastContext';
 import GoalModal from '../components/GoalModal';
 import ConfirmModal from '../components/ConfirmModal';
 import EmptyState from '../components/EmptyState';
 
-const TABS = ['All', 'Daily', 'Short-Term', 'Long-Term'];
+const TABS = ['All', 'Daily', 'Short-Term', 'Long-Term', 'DSA', 'Learning', 'Development', 'Architecture'];
 const PRIORITIES = ['Low', 'Medium', 'High'];
 
 export default function GoalsPage() {
-  const [goals, setGoals] = useState(() => getGoals());
+  const { showToast } = useToast();
+  const [goals, setGoals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isSeeding, setIsSeeding] = useState(false);
   const [activeTab, setActiveTab] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState(null);
   const [deletingGoal, setDeletingGoal] = useState(null);
-  const [toast, setToast] = useState('');
 
-  // Keep state synchronized with LocalStorage events
-  useEffect(() => {
-    const unsubscribe = subscribeToStorage((key, data) => {
-      if (key === STORAGE_KEYS.GOALS && Array.isArray(data)) {
-        setGoals(data);
+  const fetchGoals = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await api.goals.getAll();
+      if (res && res.success && Array.isArray(res.data)) {
+        setGoals(res.data);
+        saveGoals(res.data);
+      } else {
+        setError(res?.message || 'Failed to load goals from database');
       }
-    });
-    return unsubscribe;
-  }, []);
-
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3000);
+    } catch (err) {
+      setError(err.message || 'An unexpected network error occurred');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const toggleGoal = (id) => {
+  useEffect(() => {
+    fetchGoals();
+  }, []);
+
+  const toggleGoal = async (targetId) => {
+    const goal = goals.find(g => (g._id === targetId || g.id === targetId));
+    if (!goal) return;
+
+    const actualId = goal._id || goal.id;
+    const isCurrentlyDone = Boolean(goal.completed || goal.status === 'Completed');
+    const nextDone = !isCurrentlyDone;
+
+    // Optimistic update
     const updated = goals.map((g) => {
-      if (g.id === id) {
-        const nextDone = !(g.completed || g.status === 'Completed');
+      if (g._id === actualId || g.id === actualId) {
         return {
           ...g,
           completed: nextDone,
@@ -47,48 +66,131 @@ export default function GoalsPage() {
     });
 
     setGoals(updated);
-    saveGoals(updated);
-    const target = updated.find(g => g.id === id);
-    if (target?.completed) {
-      showToast(`Completed: "${target.title || target.task}" 🎉`);
+
+    try {
+      const res = await api.goals.update(actualId, {
+        completed: nextDone,
+        status: nextDone ? 'Completed' : 'In Progress'
+      });
+
+      if (res && res.success && res.data) {
+        const synced = goals.map(g => (g._id === actualId || g.id === actualId ? res.data : g));
+        setGoals(synced);
+        saveGoals(synced);
+        if (nextDone) {
+          showToast(`Goal completed: "${goal.title || goal.task}" 🎉`, 'success');
+        } else {
+          showToast(`Goal marked in progress: "${goal.title || goal.task}"`, 'info');
+        }
+      } else {
+        // Rollback
+        setGoals(goals);
+        showToast(res?.message || 'Failed to update goal status', 'error');
+      }
+    } catch (err) {
+      setGoals(goals);
+      showToast(err.message || 'Error updating goal', 'error');
     }
   };
 
-  const handleCyclePriority = (e, goal) => {
+  const handleCyclePriority = async (e, goal) => {
     e.stopPropagation();
     const currIdx = PRIORITIES.indexOf(goal.priority || 'Medium');
     const nextPriority = PRIORITIES[(currIdx + 1) % PRIORITIES.length];
+    const actualId = goal._id || goal.id;
 
-    const updated = goals.map(g => (g.id === goal.id ? { ...g, priority: nextPriority } : g));
+    // Optimistic update
+    const updated = goals.map(g => (g._id === actualId || g.id === actualId ? { ...g, priority: nextPriority } : g));
     setGoals(updated);
-    saveGoals(updated);
-    showToast(`Priority set to ${nextPriority} for "${goal.title || goal.task}"`);
-  };
 
-  const handleSaveGoal = (savedGoal) => {
-    let updated;
-    const exists = goals.some(g => g.id === savedGoal.id);
-
-    if (exists) {
-      updated = goals.map(g => (g.id === savedGoal.id ? savedGoal : g));
-      showToast(`Updated goal: "${savedGoal.title}"`);
-    } else {
-      updated = [savedGoal, ...goals];
-      showToast(`Added goal: "${savedGoal.title}"`);
+    try {
+      const res = await api.goals.update(actualId, { priority: nextPriority });
+      if (res && res.success && res.data) {
+        const synced = goals.map(g => (g._id === actualId || g.id === actualId ? res.data : g));
+        setGoals(synced);
+        saveGoals(synced);
+        showToast(`Priority set to ${nextPriority} for "${goal.title || goal.task}"`, 'info');
+      } else {
+        setGoals(goals);
+        showToast(res?.message || 'Failed to update priority', 'error');
+      }
+    } catch (err) {
+      setGoals(goals);
+      showToast(err.message || 'Error updating priority', 'error');
     }
-
-    setGoals(updated);
-    saveGoals(updated);
-    setEditingGoal(null);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleSaveGoal = async (savedGoal) => {
+    try {
+      const exists = goals.some(g => g.id === savedGoal.id || g._id === savedGoal.id);
+      let updated;
+
+      if (exists) {
+        const targetId = savedGoal.id || savedGoal._id;
+        const res = await api.goals.update(targetId, savedGoal);
+        if (res && res.success && res.data) {
+          const item = res.data;
+          updated = goals.map(g => (g.id === targetId || g._id === targetId ? item : g));
+          showToast(`Goal updated: "${item.title || item.task}"`, 'success');
+        } else {
+          showToast(res?.message || 'Failed to update goal', 'error');
+          return;
+        }
+      } else {
+        const res = await api.goals.create(savedGoal);
+        if (res && res.success && res.data) {
+          const item = res.data;
+          updated = [item, ...goals];
+          showToast(`Goal added: "${item.title || item.task}"`, 'success');
+        } else {
+          showToast(res?.message || 'Failed to save goal', 'error');
+          return;
+        }
+      }
+
+      setGoals(updated);
+      saveGoals(updated);
+      setEditingGoal(null);
+    } catch (err) {
+      showToast(err.message || 'Error saving goal', 'error');
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
     if (!deletingGoal) return;
-    const updated = goals.filter(g => g.id !== deletingGoal.id);
-    setGoals(updated);
-    saveGoals(updated);
-    showToast(`Removed goal: "${deletingGoal.title || deletingGoal.task}"`);
-    setDeletingGoal(null);
+    const targetId = deletingGoal._id || deletingGoal.id;
+    try {
+      const res = await api.goals.delete(targetId);
+      if (res && res.success) {
+        const updated = goals.filter(g => g._id !== targetId && g.id !== targetId);
+        setGoals(updated);
+        saveGoals(updated);
+        showToast(`Goal removed: "${deletingGoal.title || deletingGoal.task}"`, 'info');
+      } else {
+        showToast(res?.message || 'Failed to delete goal', 'error');
+      }
+    } catch (err) {
+      showToast(err.message || 'Error deleting goal', 'error');
+    } finally {
+      setDeletingGoal(null);
+    }
+  };
+
+  const handleSeedSampleGoals = async () => {
+    try {
+      setIsSeeding(true);
+      const res = await api.seed(false);
+      if (res && res.success) {
+        showToast('Sample milestones loaded into database!', 'success');
+        await fetchGoals();
+      } else {
+        showToast(res?.message || 'Could not seed sample goals', 'info');
+      }
+    } catch (err) {
+      showToast(err.message || 'Error seeding sample goals', 'error');
+    } finally {
+      setIsSeeding(false);
+    }
   };
 
   const filteredGoals = activeTab === 'All' 
@@ -100,31 +202,18 @@ export default function GoalsPage() {
 
   return (
     <div className="space-y-8 pb-10">
-      {/* Toast Notification */}
-      {toast && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0 }}
-          className="fixed top-20 right-8 z-50 px-4 py-3 rounded-xl bg-cyan-600 text-white shadow-xl shadow-cyan-600/30 flex items-center gap-2 text-xs font-semibold"
-        >
-          <Sparkles className="w-4 h-4" />
-          <span>{toast}</span>
-        </motion.div>
-      )}
-
       {/* Header Banner */}
       <div className="glass-card p-6 sm:p-8 border-cyan-500/20 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
             <Target className="w-3.5 h-3.5" />
-            <span>Target Execution</span>
+            <span>Database-Backed Execution</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
             Career Goals & Milestones
           </h1>
           <p className="text-sm text-slate-400 max-w-xl">
-            Break macro career visions into actionable daily, weekly, and quarterly targets.
+            Break macro career visions into actionable daily, weekly, and quarterly targets persisted in MongoDB.
           </p>
         </div>
 
@@ -139,6 +228,23 @@ export default function GoalsPage() {
           </div>
         </div>
       </div>
+
+      {/* Error state */}
+      {error && (
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-between gap-4 text-rose-400">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <span className="text-sm font-medium">{error}</span>
+          </div>
+          <button
+            onClick={fetchGoals}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-semibold transition-all"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Retry</span>
+          </button>
+        </div>
+      )}
 
       {/* Tabs and Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -157,26 +263,54 @@ export default function GoalsPage() {
           ))}
         </div>
 
-        <button
-          onClick={() => {
-            setEditingGoal(null);
-            setIsModalOpen(true);
-          }}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-cyan-600 hover:bg-cyan-500 shadow-md shadow-cyan-600/20 hover:shadow-cyan-600/40 transition-all flex-shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Goal</span>
-        </button>
+        <div className="flex items-center gap-2.5 flex-shrink-0">
+          {goals.length === 0 && !loading && (
+            <button
+              onClick={handleSeedSampleGoals}
+              disabled={isSeeding}
+              className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 transition-all"
+            >
+              {isSeeding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+              <span>Load Sample Goals</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              setEditingGoal(null);
+              setIsModalOpen(true);
+            }}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-cyan-600 hover:bg-cyan-500 shadow-md shadow-cyan-600/20 hover:shadow-cyan-600/40 transition-all flex-shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Goal</span>
+          </button>
+        </div>
       </div>
 
-      {/* Goals List or Empty State */}
-      {filteredGoals.length === 0 ? (
+      {/* Loading Skeleton */}
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="glass-card p-5 flex items-center justify-between gap-4 animate-pulse">
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 rounded-full bg-white/10" />
+                <div className="space-y-1.5">
+                  <div className="w-48 h-4 bg-white/10 rounded" />
+                  <div className="w-24 h-3 bg-white/5 rounded" />
+                </div>
+              </div>
+              <div className="w-24 h-3 bg-white/10 rounded" />
+            </div>
+          ))}
+        </div>
+      ) : filteredGoals.length === 0 ? (
         <EmptyState
           icon={Target}
           title={goals.length === 0 ? 'No goals created yet' : `No goals found in "${activeTab}"`}
           description={
             goals.length === 0 
-              ? 'Stay focused and accountable by defining your first technical goal.'
+              ? 'Stay focused and accountable by defining your first technical goal, or load starter milestones.'
               : 'Try viewing another category or add a new goal for this milestone timeline.'
           }
           actionText="Add New Goal"
@@ -191,6 +325,7 @@ export default function GoalsPage() {
         <div className="space-y-3">
           <AnimatePresence>
             {filteredGoals.map((g, idx) => {
+              const actualId = g._id || g.id;
               const isDone = Boolean(g.completed || g.status === 'Completed');
               const displayText = g.title || g.task || 'Untitled Goal';
               const priority = g.priority || 'Medium';
@@ -203,13 +338,13 @@ export default function GoalsPage() {
 
               return (
                 <motion.div
-                  key={g.id}
+                  key={actualId}
                   layout
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ delay: idx * 0.02 }}
-                  onClick={() => toggleGoal(g.id)}
+                  onClick={() => toggleGoal(actualId)}
                   className={`glass-card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none transition-all group relative overflow-hidden
                     ${isDone ? 'border-emerald-500/20 bg-emerald-500/[0.02]' : 'hover:border-cyan-500/30'}`}
                 >
@@ -219,7 +354,7 @@ export default function GoalsPage() {
                       aria-label={isDone ? "Mark incomplete" : "Mark complete"}
                       onClick={(e) => {
                         e.stopPropagation();
-                        toggleGoal(g.id);
+                        toggleGoal(actualId);
                       }}
                       className="mt-0.5 sm:mt-0 flex-shrink-0 text-cyan-400 focus:outline-none"
                     >
@@ -236,6 +371,11 @@ export default function GoalsPage() {
                       }`}>
                         {displayText}
                       </h3>
+                      {g.description && (
+                        <p className={`text-xs mt-0.5 line-clamp-1 ${isDone ? 'line-through text-slate-500' : 'text-slate-400'}`}>
+                          {g.description}
+                        </p>
+                      )}
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/5">
                           {g.category}
@@ -286,7 +426,7 @@ export default function GoalsPage() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setEditingGoal(g);
+                          setEditingGoal({ ...g, id: actualId });
                           setIsModalOpen(true);
                         }}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
@@ -298,7 +438,7 @@ export default function GoalsPage() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setDeletingGoal(g);
+                          setDeletingGoal({ ...g, id: actualId });
                         }}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
                         title="Delete Goal"
@@ -331,7 +471,7 @@ export default function GoalsPage() {
         onClose={() => setDeletingGoal(null)}
         onConfirm={handleDeleteConfirm}
         title="Delete Goal"
-        message={`Are you sure you want to delete "${deletingGoal?.title || deletingGoal?.task}"?`}
+        message={`Are you sure you want to delete "${deletingGoal?.title || deletingGoal?.task}"? It will be removed from your database.`}
         confirmText="Delete Goal"
       />
     </div>

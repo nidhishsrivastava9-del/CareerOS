@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   FileCheck2, 
@@ -12,14 +12,47 @@ import {
   AlertCircle,
   Mail,
   Linkedin,
-  Github
+  Github,
+  FolderGit2
 } from 'lucide-react';
-import { resumeData, studentProfile } from '../data/dummyData';
+import { 
+  getResume, 
+  getUser, 
+  getSkills, 
+  getProjects, 
+  getCertifications, 
+  subscribeToStorage, 
+  STORAGE_KEYS 
+} from '../utils/storage';
 
 export default function ResumePage() {
+  const [resume, setResume] = useState(() => getResume());
+  const [profile, setProfile] = useState(() => getUser());
+  const [skills, setSkills] = useState(() => getSkills());
+  const [projects, setProjects] = useState(() => getProjects());
+  const [certifications, setCertifications] = useState(() => getCertifications());
+
+  useEffect(() => {
+    const unsubscribe = subscribeToStorage((key, data) => {
+      if (key === STORAGE_KEYS.RESUME && data) setResume(data);
+      if (key === STORAGE_KEYS.USER && data) setProfile(data);
+      if (key === STORAGE_KEYS.SKILLS && Array.isArray(data)) setSkills(data);
+      if (key === STORAGE_KEYS.PROJECTS && Array.isArray(data)) setProjects(data);
+      if (key === STORAGE_KEYS.CERTIFICATIONS && Array.isArray(data)) setCertifications(data);
+    });
+    return unsubscribe;
+  }, []);
+
   const handlePrint = () => {
     window.print();
   };
+
+  // Derive active skill list from stored skills (fallback to resume.skillsList if empty)
+  const displaySkills = skills.length > 0 
+    ? skills.map(s => s.name) 
+    : (resume.skillsList || []);
+
+  const featuredProjects = projects.filter(p => p.featured || p.status === 'Completed').slice(0, 3);
 
   return (
     <div className="space-y-8 pb-10">
@@ -40,7 +73,7 @@ export default function ResumePage() {
 
         <div className="flex items-center gap-4">
           <div className="bg-white/[0.03] p-4 rounded-2xl border border-white/5 text-center min-w-[120px]">
-            <div className="text-3xl font-black text-emerald-400">{resumeData.score}%</div>
+            <div className="text-3xl font-black text-emerald-400">{resume.score || 80}%</div>
             <div className="text-[11px] text-slate-400 uppercase tracking-wider">ATS Strength</div>
           </div>
 
@@ -59,20 +92,20 @@ export default function ResumePage() {
         <div className="lg:col-span-8 glass-card p-6 sm:p-8 space-y-6 border-white/10 bg-slate-900/60 print:bg-white print:text-black">
           {/* Header */}
           <div className="border-b border-white/10 pb-5 space-y-1.5">
-            <h2 className="text-2xl font-black text-white tracking-tight">{studentProfile.name}</h2>
-            <p className="text-sm font-medium text-indigo-400">{studentProfile.targetRole}</p>
+            <h2 className="text-2xl font-black text-white tracking-tight">{profile?.name || 'Alex Rivera'}</h2>
+            <p className="text-sm font-medium text-indigo-400">{profile?.targetRole || 'Full-Stack Software Engineer'}</p>
             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1">
               <span className="flex items-center gap-1">
                 <Mail className="w-3.5 h-3.5 text-indigo-400" />
-                {studentProfile.email}
+                {profile?.email || 'alex.rivera@cs.university.edu'}
               </span>
               <span className="flex items-center gap-1">
                 <Github className="w-3.5 h-3.5 text-indigo-400" />
-                github.com/alexrivera
+                github.com/{(profile?.name || 'alexrivera').toLowerCase().replace(/\s+/g, '')}
               </span>
               <span className="flex items-center gap-1">
                 <Linkedin className="w-3.5 h-3.5 text-indigo-400" />
-                linkedin.com/in/alexrivera
+                linkedin.com/in/{(profile?.name || 'alexrivera').toLowerCase().replace(/\s+/g, '')}
               </span>
             </div>
           </div>
@@ -83,7 +116,7 @@ export default function ResumePage() {
               Professional Summary
             </h3>
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              {resumeData.summary}
+              {resume.summary}
             </p>
           </div>
 
@@ -93,7 +126,7 @@ export default function ResumePage() {
               <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
               Education
             </h3>
-            {resumeData.education.map((edu, idx) => (
+            {(resume.education || []).map((edu, idx) => (
               <div key={idx} className="space-y-1">
                 <div className="flex items-center justify-between text-xs sm:text-sm">
                   <span className="font-bold text-white">{edu.degree}</span>
@@ -104,7 +137,7 @@ export default function ResumePage() {
                   <span className="font-semibold">GPA: {edu.gpa}</span>
                 </div>
                 <ul className="list-disc list-inside text-xs text-slate-400 pt-1 space-y-0.5">
-                  {edu.highlights.map((h, i) => (
+                  {(edu.highlights || []).map((h, i) => (
                     <li key={i}>{h}</li>
                   ))}
                 </ul>
@@ -112,14 +145,14 @@ export default function ResumePage() {
             ))}
           </div>
 
-          {/* Technical Skills */}
+          {/* Technical Skills (Dynamically synced with LocalStorage) */}
           <div className="space-y-2">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-white/10 pb-1 flex items-center gap-1.5">
               <Code className="w-3.5 h-3.5 text-indigo-400" />
-              Technical Skills
+              Technical Skills & Proficiencies
             </h3>
             <div className="flex flex-wrap gap-1.5 pt-1">
-              {resumeData.skillsList.map((skill) => (
+              {displaySkills.map((skill) => (
                 <span key={skill} className="px-2.5 py-1 rounded-lg text-xs bg-white/5 border border-white/10 text-slate-200">
                   {skill}
                 </span>
@@ -127,19 +160,47 @@ export default function ResumePage() {
             </div>
           </div>
 
-          {/* Certifications */}
+          {/* Key Featured Projects (Dynamically synced from LocalStorage) */}
+          {featuredProjects.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-white/10 pb-1 flex items-center gap-1.5">
+                <FolderGit2 className="w-3.5 h-3.5 text-purple-400" />
+                Featured Engineering Projects
+              </h3>
+              <div className="space-y-2.5">
+                {featuredProjects.map((proj) => (
+                  <div key={proj.id} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs sm:text-sm">
+                      <span className="font-bold text-white">{proj.title}</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 font-semibold">{proj.status}</span>
+                    </div>
+                    <p className="text-xs text-slate-400">{proj.description}</p>
+                    <div className="flex items-center gap-1 text-[11px] text-indigo-300">
+                      <span>Stack:</span>
+                      <span>{(proj.techStack || []).join(', ')}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Certifications (Dynamically synced from LocalStorage) */}
           <div className="space-y-2">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-white/10 pb-1 flex items-center gap-1.5">
               <Award className="w-3.5 h-3.5 text-indigo-400" />
               Certifications & Credentials
             </h3>
             <div className="space-y-2">
-              {resumeData.certifications.map((c, i) => (
-                <div key={i} className="flex items-center justify-between text-xs">
+              {certifications.map((c, i) => (
+                <div key={c.id || i} className="flex items-center justify-between text-xs">
                   <span className="font-medium text-slate-200">{c.name}</span>
                   <span className="text-slate-400">{c.issuer} • {c.date}</span>
                 </div>
               ))}
+              {certifications.length === 0 && (
+                <p className="text-xs text-slate-500 italic">No certifications added yet.</p>
+              )}
             </div>
           </div>
         </div>
@@ -153,7 +214,7 @@ export default function ResumePage() {
             </div>
 
             <div className="space-y-3">
-              {resumeData.improvements.map((item, idx) => (
+              {(resume.improvements || []).map((item, idx) => (
                 <div key={idx} className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-200">{item.title}</span>

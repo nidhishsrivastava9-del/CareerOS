@@ -1,0 +1,109 @@
+name: CareerOS CI/CD Pipeline
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # Job 1: Backend Automated Verification & Security Regression
+  # ----------------------------------------------------------------------------
+  test-backend:
+    name: Backend Test Suites & Security Verification
+    runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Run Backend Regression Test Suites
+        working-directory: ./backend
+        env:
+          NODE_ENV: test
+          PORT: 5000
+          MONGO_URI: mongodb://localhost:27017/careeros_test
+          JWT_SECRET: ci_cd_test_jwt_secret_key_1234567890
+          AI_PROVIDER: mock
+          EMBEDDING_PROVIDER: mock
+        run: |
+          node test-day5-unit.js
+          node test-registration-e2e.js
+          node test-video-system.js
+          node test-day8-integration.js
+          node test-day9-ai.js
+          node test-day10-rag.js
+          node test-day11-assessment.js
+          node test-day12-production.js
+
+  # ----------------------------------------------------------------------------
+  # Job 2: Frontend Production Build & Bundle Audit
+  # ----------------------------------------------------------------------------
+  build-frontend:
+    name: Frontend Vite Production Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Build Vite Production Bundle
+        run: npm run build
+
+      - name: Verify Production Artifacts
+        run: |
+          test -f dist/index.html || exit 1
+          echo "Production build verified successfully!"
+
+  # ----------------------------------------------------------------------------
+  # Job 3: Security & Secrets Hygiene Audit
+  # ----------------------------------------------------------------------------
+  security-audit:
+    name: Security & Repository Secrets Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Check for Uncommitted / Tracked .env Files
+        run: |
+          if git ls-files | grep -E "(^|/)\.env(\..+)?$" | grep -v "\.env\.example$"; then
+            echo "ERROR: Tracked .env files detected in repository! Must be excluded by .gitignore."
+            exit 1
+          else
+            echo "No committed secrets or .env files found. Clean repository hygiene."
+          fi
+
+      - name: Validate Docker Compose Syntax
+        run: |
+          docker compose config --quiet || exit 1
+          echo "docker-compose.yml configuration valid."

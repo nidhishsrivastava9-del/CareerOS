@@ -14,6 +14,7 @@ export default function GoalModal({
   const isEditing = Boolean(initialData && initialData.id);
 
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Daily');
   const [deadline, setDeadline] = useState('');
   const [priority, setPriority] = useState('Medium');
@@ -23,6 +24,7 @@ export default function GoalModal({
   useEffect(() => {
     if (initialData) {
       setTitle(initialData.title || initialData.task || '');
+      setDescription(initialData.description || '');
       setCategory(initialData.category || 'Daily');
       setDeadline(initialData.deadline || '');
       setPriority(initialData.priority || 'Medium');
@@ -30,6 +32,7 @@ export default function GoalModal({
       setErrors({});
     } else {
       setTitle('');
+      setDescription('');
       setCategory('Daily');
       setDeadline('Today, 8:00 PM');
       setPriority('Medium');
@@ -55,6 +58,7 @@ export default function GoalModal({
       id: initialData?.id || `goal-${Date.now()}`,
       title: title.trim(),
       task: title.trim(),
+      description: description.trim(),
       category,
       deadline: deadline.trim() || 'No deadline',
       priority,
@@ -98,6 +102,20 @@ export default function GoalModal({
           {errors.title && (
             <p className="mt-1 text-xs text-rose-500 font-medium">{errors.title}</p>
           )}
+        </div>
+
+        {/* Description */}
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+            Description / Notes (optional)
+          </label>
+          <textarea
+            rows={2}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Add relevant context, steps, or study links..."
+            className="w-full px-3.5 py-2 rounded-xl text-sm bg-slate-50 dark:bg-white/[0.04] border border-slate-300 dark:border-white/10 text-slate-900 dark:text-white focus:outline-none focus:border-cyan-500 transition-colors"
+          />
         </div>
 
         {/* Category & Deadline */}

@@ -35,3 +35,9 @@ Thumbs.db
 # Vite
 .vite/
 coverage/
+
+# Generated Vite config bundles
+vite.config.js.timestamp-*.mjs
+
+# Generated Vite config bundles
+vite.config.js.timestamp-*.mjs

@@ -1,20 +1,41 @@
-import React, { useState } from 'react';
-import { Settings as SettingsIcon, User, Moon, Sun, Bell, Shield, Sparkles, Check } from 'lucide-react';
-import { studentProfile } from '../data/dummyData';
+import React, { useState, useEffect } from 'react';
+import { Settings as SettingsIcon, User, Moon, Sun, Bell, Shield, Sparkles, Check, RotateCcw } from 'lucide-react';
+import { getUser, saveUser, resetToDefaults, subscribeToStorage, STORAGE_KEYS } from '../utils/storage';
 import { useTheme } from '../context/ThemeContext';
+import { useToast } from '../context/ToastContext';
 
 export default function SettingsPage() {
   const { isDark, toggleTheme } = useTheme();
-  const [profile, setProfile] = useState(studentProfile);
+  const { showToast } = useToast();
+  const [profile, setProfile] = useState(() => getUser());
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [streakReminders, setStreakReminders] = useState(true);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  useEffect(() => {
+    const unsubscribe = subscribeToStorage((key, data) => {
+      if (key === STORAGE_KEYS.USER && data) {
+        setProfile(data);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
   const handleSave = (e) => {
     e.preventDefault();
+    saveUser(profile);
     setSaved(true);
+    showToast('Profile and settings updated successfully!', 'success');
     setTimeout(() => setSaved(false), 3000);
+  };
+
+  const handleResetData = () => {
+    if (window.confirm('Reset all CareerOS data back to factory defaults? Your changes will be replaced with fresh sample data.')) {
+      resetToDefaults();
+      setProfile(getUser());
+      showToast('All CareerOS metrics reset to defaults!', 'info');
+    }
   };
 
   return (
@@ -53,7 +74,7 @@ export default function SettingsPage() {
               </label>
               <input
                 type="text"
-                value={profile.name}
+                value={profile?.name || ''}
                 onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                 className="w-full px-3.5 py-2 rounded-xl text-sm bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-indigo-500"
               />
@@ -65,7 +86,7 @@ export default function SettingsPage() {
               </label>
               <input
                 type="text"
-                value={profile.targetRole}
+                value={profile?.targetRole || ''}
                 onChange={(e) => setProfile({ ...profile, targetRole: e.target.value })}
                 className="w-full px-3.5 py-2 rounded-xl text-sm bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-indigo-500"
               />
@@ -77,7 +98,7 @@ export default function SettingsPage() {
               </label>
               <input
                 type="text"
-                value={profile.university}
+                value={profile?.university || ''}
                 onChange={(e) => setProfile({ ...profile, university: e.target.value })}
                 className="w-full px-3.5 py-2 rounded-xl text-sm bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-indigo-500"
               />
@@ -89,7 +110,7 @@ export default function SettingsPage() {
               </label>
               <input
                 type="text"
-                value={profile.major}
+                value={profile?.major || ''}
                 onChange={(e) => setProfile({ ...profile, major: e.target.value })}
                 className="w-full px-3.5 py-2 rounded-xl text-sm bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-indigo-500"
               />
@@ -168,6 +189,33 @@ export default function SettingsPage() {
                 className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
               />
             </label>
+          </div>
+        </div>
+
+        {/* Data Persistence & Reset */}
+        <div className="glass-card p-6 space-y-4 border-rose-500/10">
+          <div className="flex items-center gap-2 pb-3 border-b border-white/10">
+            <RotateCcw className="w-4 h-4 text-rose-400" />
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">
+              Data Management & Reset
+            </h2>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-rose-500/[0.03] border border-rose-500/10">
+            <div>
+              <h3 className="text-sm font-semibold text-rose-300">Restore Factory Default Data</h3>
+              <p className="text-xs text-slate-400">
+                Clear all custom entries and reload initial student skills, projects, goals, and DSA problem records.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleResetData}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition-all self-start sm:self-auto"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset All Data</span>
+            </button>
           </div>
         </div>
 

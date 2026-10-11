@@ -1,8 +1,9 @@
-import React from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Map, 
+  Compass, 
   Layers, 
   FolderGit2, 
   Binary, 
@@ -10,15 +11,21 @@ import {
   FileText, 
   BarChart3, 
   Settings, 
-  Sparkles,
-  ChevronRight,
-  X,
-  GraduationCap
+  Sparkles, 
+  ChevronRight, 
+  X, 
+  GraduationCap,
+  LogOut,
+  Bot
 } from 'lucide-react';
-import { studentProfile } from '../data/dummyData';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { getUser, subscribeToStorage, STORAGE_KEYS } from '../utils/storage';
 
 const navItems = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
+  { name: 'Helping AI', path: '/ai', icon: Bot },
+  { name: 'Career Catalog', path: '/careers', icon: Compass },
   { name: 'Roadmap', path: '/roadmap', icon: Map },
   { name: 'Skills', path: '/skills', icon: Layers },
   { name: 'Projects', path: '/projects', icon: FolderGit2 },
@@ -31,6 +38,29 @@ const navItems = [
 
 export default function Sidebar({ isOpen, onClose }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+  const { showToast } = useToast();
+  const [profile, setProfile] = useState(() => getUser());
+
+  useEffect(() => {
+    const unsubscribe = subscribeToStorage((key, data) => {
+      if (key === STORAGE_KEYS.USER && data) {
+        setProfile(data);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  const handleLogout = () => {
+    logout();
+    showToast('Signed out of CareerOS. See you soon!');
+    navigate('/login');
+    if (onClose) onClose();
+  };
+
+  const displayName = user?.name || profile?.roleTitle || profile?.name || 'Alex Rivera';
+  const displayEmail = user?.email || profile?.major || 'Student Account';
 
   return (
     <>
@@ -76,13 +106,17 @@ export default function Sidebar({ isOpen, onClose }) {
           </div>
 
           {/* Navigation Items */}
-          <nav className="px-4 py-6 space-y-1.5 overflow-y-auto max-h-[calc(100vh-190px)]">
+          <nav className="px-4 py-6 space-y-1.5 overflow-y-auto max-h-[calc(100vh-210px)]">
             <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Navigation
             </div>
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = location.pathname === item.path;
+              const isActive = item.path === '/'
+                ? location.pathname === '/'
+                : item.path === '/careers'
+                  ? location.pathname.startsWith('/careers') || location.pathname.startsWith('/learn')
+                  : location.pathname.startsWith(item.path);
               return (
                 <NavLink
                   key={item.path}
@@ -109,26 +143,38 @@ export default function Sidebar({ isOpen, onClose }) {
           </nav>
         </div>
 
-        {/* Bottom Student Profile */}
+        {/* Bottom Student Profile & Logout */}
         <div className="p-4 border-t border-slate-200 dark:border-white/[0.06] bg-slate-50/50 dark:bg-black/20">
-          <div className="flex items-center gap-3 p-2 rounded-xl bg-slate-100 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.05]">
-            <div className="relative">
-              <img 
-                src={studentProfile.avatar} 
-                alt={studentProfile.name}
-                className="w-10 h-10 rounded-full object-cover ring-2 ring-indigo-500/40" 
-              />
-              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[#0B0F19]" />
+          <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-100 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.05]">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <div className="relative flex-shrink-0">
+                <img 
+                  src={profile?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"} 
+                  alt={displayName}
+                  className="w-9 h-9 rounded-full object-cover ring-2 ring-indigo-500/40" 
+                />
+                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[#0B0F19]" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-xs font-semibold truncate text-slate-900 dark:text-slate-100">
+                  {displayName}
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate flex items-center gap-1">
+                  <GraduationCap className="w-3 h-3 text-indigo-400 flex-shrink-0" />
+                  <span className="truncate">{displayEmail}</span>
+                </p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-semibold truncate text-slate-900 dark:text-slate-100">
-                {studentProfile.roleTitle}
-              </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate flex items-center gap-1">
-                <GraduationCap className="w-3 h-3 text-indigo-400 flex-shrink-0" />
-                <span>{studentProfile.major}</span>
-              </p>
-            </div>
+
+            {/* Logout Action Button */}
+            <button
+              onClick={handleLogout}
+              title="Sign Out"
+              aria-label="Sign Out"
+              className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </aside>
